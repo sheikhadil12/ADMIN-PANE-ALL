@@ -1010,7 +1010,7 @@
 
         // --- Firebase Auth Functions ---
         async function loginAdmin(event) { event.preventDefault(); if (!auth) return; const email = elements.adminEmailInput.value; const password = elements.adminPasswordInput.value; clearStatus(elements.adminLoginStatus); showLoader(true); try { await signInWithEmailAndPassword(auth, email, password); } catch (error) { console.error("Admin Login Error:", error); let message = `Login Failed: ${error.code}`; if (error.code === 'auth/network-request-failed') { message = "Login Failed: Network error."; } else if (['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found', 'auth/invalid-email'].includes(error.code)) { message = "Login Failed: Invalid email or password."; } else if (error.code === 'auth/too-many-requests') { message = "Login Failed: Too many attempts."; } showStatus(elements.adminLoginStatus, message, 'danger', false); } finally { showLoader(false); } }
-        async function logoutAdminUser() { if (!auth) return; showLoader(true); try { await signOut(auth); } catch (error) { console.error("Admin Logout Error:", error); alert("Logout failed: " + error.message); } finally { } }
+        async function logoutAdminUser() { if (!auth) return; showLoader(true); try { await signOut(auth); } catch (error) { console.error("Admin Logout Error:", error); alert("Logout failed: " + error.message); } finally { showLoader(false); } }
 
         // --- Admin Setup & Verification ---
         async function checkAdminSetup() { if (!db) return false; const adminConfigRef = ref(db, 'adminConfig'); try { console.log("Checking admin setup..."); const snapshot = await get(adminConfigRef); if (snapshot.exists()) { const d = snapshot.val(); isAdminSetupComplete = d.setupComplete === true; designatedAdminUid = d.adminUid || null; } else { isAdminSetupComplete = false; designatedAdminUid = null; } console.log("Admin setup check:", isAdminSetupComplete, "| UID:", designatedAdminUid); return isAdminSetupComplete; } catch (error) { console.error("Error checking admin setup:", error); const el = elements.loginSection?.style.display === 'block' ? elements.adminLoginStatus : elements.setupStatus; if (el) showStatus(el, `Config check error: ${error.message}. Check Rules.`, "danger", false); isAdminSetupComplete = false; designatedAdminUid = null; return false; } }
@@ -2458,6 +2458,14 @@
                 // Show basic login/setup UI as fallback
                 handleInitialLoad();
             }
+            setTimeout(() => {
+                const uiVisible = elements.mainArea.style.display === 'block' || elements.loginSection.style.display === 'block' || elements.setupSection.style.display === 'block';
+                if (!uiVisible) {
+                    console.warn("Admin UI not visible after init. Applying fallback.");
+                    try { handleInitialLoad(); } catch {}
+                    if (elements.adminLoader) elements.adminLoader.style.display = 'none';
+                }
+            }, 1500);
         });
 
     </script>
