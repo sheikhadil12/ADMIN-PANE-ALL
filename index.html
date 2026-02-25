@@ -800,8 +800,6 @@
         let adminWhitelist = new Set();
         let currentUserIsAdminFlag = false;
         let appSettings = {};
-        const PANEL_ROLE = 'ops';
-        let currentAdminRole = 'viewer';
 
         // --- Admin Auth & Security ---
         function isDesignatedAdmin(user) {
@@ -817,29 +815,6 @@
                 console.error("UID Mismatch! Logged in UID:", user.uid, "| Expected Admin UID:", designatedAdminUid);
             }
             return isMatch;
-        }
-
-        function getAllowedSectionsForRole(role) {
-            const base = ['dashboard-section'];
-            const maps = {
-                super: ['games-section','promotions-section','tournaments-section','users-section','notifications-section','withdrawals-section','deposits-section','settings-section','transactions-section'],
-                ops: ['games-section','promotions-section','tournaments-section','users-section','notifications-section'],
-                finance: ['withdrawals-section','deposits-section','users-section','notifications-section'],
-                viewer: []
-            };
-            return Array.from(new Set(base.concat(maps[role] || [])));
-        }
-
-        async function resolveAdminRole(uid) {
-            try {
-                const cfgSnap = await get(ref(db, 'adminConfig/adminRoles/'+uid));
-                if (cfgSnap.exists()) return cfgSnap.val() || 'viewer';
-            } catch {}
-            try {
-                const usrSnap = await get(ref(db, `users/${uid}/role`));
-                if (usrSnap.exists()) return usrSnap.val() || 'viewer';
-            } catch {}
-            return 'viewer';
         }
 
         // --- Utility Functions ---
@@ -974,11 +949,6 @@
 
         // --- UI Functions ---
         function showAdminSection(sectionId) {
-             const allowed = getAllowedSectionsForRole(currentAdminRole);
-             if (!allowed.includes(sectionId)) {
-                 showStatus(elements.dashboardStatus, "Access denied for this panel.", "danger", false);
-                 sectionId = 'dashboard-section';
-             }
              elements.sections.forEach(sec => sec.classList.remove('active'));
              const targetSection = getElement(sectionId);
              if (targetSection) {
@@ -1052,7 +1022,7 @@
         async function handleInitialLoad() { if (!auth || !db) return; showLoader(true); await checkAdminSetup(); elements.setupSection.style.display = 'none'; elements.loginSection.style.display = 'none'; elements.mainArea.style.display = 'none'; elements.authContainer.style.display = 'block'; if (!isAdminSetupComplete) { elements.setupSection.style.display = 'block'; console.log("Showing Setup Form"); } else { elements.loginSection.style.display = 'block'; console.log("Showing Login Form"); } showLoader(false); }
 
         // --- Auth State Change Handler ---
-        async function handleAdminAuthStateChange(user) { if (!auth || !db) return; console.log("Auth State Changed. User:", user ? user.uid : 'null'); showLoader(true); currentAdminUser = user; detachAllAdminListeners(); if (user) { if (!designatedAdminUid) await checkAdminSetup(); try { const usrSnap = await get(ref(db, `users/${user.uid}/isAdmin`)); currentUserIsAdminFlag = usrSnap.exists() ? usrSnap.val() === true : false; } catch { currentUserIsAdminFlag = false; } currentAdminRole = await resolveAdminRole(user.uid); if (currentAdminRole === 'viewer' && currentUserIsAdminFlag) currentAdminRole = 'super'; const allowedHere = getAllowedSectionsForRole(PANEL_ROLE); const allowedForUser = getAllowedSectionsForRole(currentAdminRole); const panelCompatible = allowedForUser.some(sec => allowedHere.includes(sec)) || currentAdminRole === 'super'; if (isDesignatedAdmin(user) && panelCompatible) { console.log("Admin Authenticated & Authorized:", user.email); if (elements.adminUserEmailDisplay) elements.adminUserEmailDisplay.textContent = user.email; elements.authContainer.style.display = 'none'; elements.mainArea.style.display = 'block'; await loadSettings(); showAdminSection('dashboard-section'); setupRealtimeAdminListeners(); } else { console.warn("Unauthorized for this panel:", user.email, "| role:", currentAdminRole, "| panel:", PANEL_ROLE); alert(`Access Denied for this panel.`); await logoutAdminUser(); return; } } else { console.log("Auth State: Logged Out"); currentAdminUser = null; designatedAdminUid = null; isAdminSetupComplete = false; currentUserIsAdminFlag = false; currentAdminRole = 'viewer'; elements.mainArea.style.display = 'none'; elements.authContainer.style.display = 'block'; gameDataCache = {}; userDataCache = {}; fullUserDataCache = {}; appSettings = {}; if(elements.adminHeaderLogo) { elements.adminHeaderLogo.src='https://via.placeholder.com/35/1E293B/94A3B8?text=L'; elements.adminHeaderLogo.style.display='none'; } if(elements.adminPageTitle) elements.adminPageTitle.textContent='Admin Panel'; document.title='Admin Panel'; if(elements.adminUserEmailDisplay) elements.adminUserEmailDisplay.textContent=''; Object.values(elements).filter(el => el.id?.startsWith('stat')).forEach(el => el.textContent = '--'); if(elements.pendingWithdrawalCountBadge) { elements.pendingWithdrawalCountBadge.textContent='0'; elements.pendingWithdrawalCountBadge.style.display='none';} if(elements.userSearchInput) elements.userSearchInput.value = ''; await handleInitialLoad(); } setTimeout(() => showLoader(false), 150); }
+        async function handleAdminAuthStateChange(user) { if (!auth || !db) return; console.log("Auth State Changed. User:", user ? user.uid : 'null'); showLoader(true); currentAdminUser = user; detachAllAdminListeners(); if (user) { if (!designatedAdminUid) await checkAdminSetup(); try { const usrSnap = await get(ref(db, `users/${user.uid}/isAdmin`)); currentUserIsAdminFlag = usrSnap.exists() ? usrSnap.val() === true : false; } catch { currentUserIsAdminFlag = false; } if (isDesignatedAdmin(user)) { console.log("Admin Authenticated & Authorized:", user.email); if (elements.adminUserEmailDisplay) elements.adminUserEmailDisplay.textContent = user.email; elements.authContainer.style.display = 'none'; elements.mainArea.style.display = 'block'; await loadSettings(); showAdminSection('dashboard-section'); setupRealtimeAdminListeners(); } else { console.warn("Unauthorized user login attempt:", user.email, "| UID:", user.uid, "| Expected:", designatedAdminUid, "| isAdminFlag:", currentUserIsAdminFlag); alert(`Access Denied. ${user.email} is not authorized.`); await logoutAdminUser(); return; } } else { console.log("Auth State: Logged Out"); currentAdminUser = null; designatedAdminUid = null; isAdminSetupComplete = false; currentUserIsAdminFlag = false; elements.mainArea.style.display = 'none'; elements.authContainer.style.display = 'block'; gameDataCache = {}; userDataCache = {}; fullUserDataCache = {}; appSettings = {}; if(elements.adminHeaderLogo) { elements.adminHeaderLogo.src='https://via.placeholder.com/35/1E293B/94A3B8?text=L'; elements.adminHeaderLogo.style.display='none'; } if(elements.adminPageTitle) elements.adminPageTitle.textContent='Admin Panel'; document.title='Admin Panel'; if(elements.adminUserEmailDisplay) elements.adminUserEmailDisplay.textContent=''; Object.values(elements).filter(el => el.id?.startsWith('stat')).forEach(el => el.textContent = '--'); if(elements.pendingWithdrawalCountBadge) { elements.pendingWithdrawalCountBadge.textContent='0'; elements.pendingWithdrawalCountBadge.style.display='none';} if(elements.userSearchInput) elements.userSearchInput.value = ''; await handleInitialLoad(); } setTimeout(() => showLoader(false), 150); }
 
         // --- Database Load Functions ---
         async function loadDashboardStats() {
@@ -2486,20 +2456,57 @@
         document.addEventListener('DOMContentLoaded', () => {
             console.log("Admin Panel DOM Loaded.");
             initializeAdminEventListeners();
-            if (auth) {
-                onAuthStateChanged(auth, handleAdminAuthStateChange);
-            } else {
-                // Show basic login/setup UI as fallback
-                handleInitialLoad();
-            }
-            setTimeout(() => {
-                const uiVisible = elements.mainArea.style.display === 'block' || elements.loginSection.style.display === 'block' || elements.setupSection.style.display === 'block';
-                if (!uiVisible) {
-                    console.warn("Admin UI not visible after init. Applying fallback.");
-                    try { handleInitialLoad(); } catch {}
-                    if (elements.adminLoader) elements.adminLoader.style.display = 'none';
+
+            // Bypassing login to go directly to the admin panel.
+            // WARNING: This removes authentication and is insecure.
+            async function initializeDirectAdminPanel() {
+                console.log("Bypassing login, initializing admin panel directly.");
+                showLoader(true);
+                
+                // Create a mock admin user. This is required for many functions to work.
+                currentAdminUser = { 
+                    uid: 'direct-admin-access', 
+                    email: 'admin@direct.local' 
+                };
+                
+                // This makes the isDesignatedAdmin() check pass.
+                designatedAdminUid = 'direct-admin-access';
+
+                try {
+                    // Hide auth forms, show main panel
+                    elements.authContainer.style.display = 'none';
+                    elements.mainArea.style.display = 'block';
+                    if (elements.adminUserEmailDisplay) {
+                        elements.adminUserEmailDisplay.textContent = 'Direct Access';
+                    }
+                    
+                    // Load initial data
+                    await loadSettings();
+                    showAdminSection('dashboard-section');
+                    setupRealtimeAdminListeners();
+                } catch (error) {
+                    console.error("Error initializing direct admin panel:", error);
+                    const statusEl = getElement('dashboardStatus') || document.body;
+                    try {
+                        showStatus(statusEl, `Error on direct load: ${error.message}`, 'danger', false);
+                    } catch(e) {
+                        document.body.innerHTML = `<div class="alert alert-danger m-3">Error on direct load: ${error.message}</div>`;
+                    }
+                } finally {
+                    showLoader(false);
                 }
-            }, 1500);
+            }
+
+            if (auth) {
+                initializeDirectAdminPanel();
+            } else {
+                // Fallback if firebase fails to init
+                const ac = document.getElementById('auth-container');
+                if (ac) {
+                    ac.innerHTML = `<div class="alert alert-danger m-3"><strong>Critical Error:</strong> Firebase failed to initialize. Cannot load admin panel.</div>`;
+                    ac.style.display = 'block';
+                }
+            }
         });
 
     </script>
